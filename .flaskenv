@@ -1,0 +1,1 @@
+FLASK_APP=social2.py
