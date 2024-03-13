@@ -56,12 +56,12 @@ class User(UserMixin, db.Model):
     def is_following(self, user):
         query = self.following.select().where(User.id == user.id)
         return db.session.scalar(query) is not None
-    
+
     def followers_count(self):
         query = sa.select(sa.func.count()).select_from(
             self.followers.select().subquery())
         return db.session.scalar(query)
-    
+
     def following_count(self):
         query = sa.select(sa.func.count()).select_from(
             self.following.select().subquery())
@@ -85,8 +85,12 @@ class User(UserMixin, db.Model):
     def __repr__(self):
         return '<user {}>'.format(self.username)
     
+@login.user_loader
+def load_user(id):
+    return db.session.get(User, int(id))
+
 class Post(db.Model):
-    id: so.Mapped[str] = so.mapped_column(primary_key=True)
+    id: so.Mapped[int] = so.mapped_column(primary_key=True)
     body: so.Mapped[str] = so.mapped_column(sa.String(140))
     timestamp: so.Mapped[datetime] = so.mapped_column(
         index=True, default=lambda: datetime.now(timezone.utc))
@@ -97,6 +101,3 @@ class Post(db.Model):
     def __repr__(self):
         return '<Post {}>'.format(self.body)
     
-@login.user_loader
-def load_user(id):
-    return db.session.get(User, int(id))

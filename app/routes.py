@@ -2,8 +2,8 @@ from flask import render_template, flash, redirect,url_for, request
 from flask_login import login_user, logout_user, current_user, login_required
 import sqlalchemy as sa
 from urllib.parse import urlsplit
-from app.forms import LoginForm, RegistrationForm, EdifProfileForm
-from app.models import User
+from app.forms import LoginForm, RegistrationForm, EdifProfileForm, EmptyForm, PostForm
+from app.models import User, Post
 from datetime import datetime, timezone
 from app import app, db
 
@@ -13,22 +13,19 @@ def before_request():
         current_user.last_seen = datetime.now(timezone.utc)
         db.session.commit()
 
-@app.route("/")
-@app.route("/index")
+@app.route("/", methods=['GET', 'POST'])
+@app.route("/index", methods=['GET', 'POST'])
 @login_required
 def index():
-    user = {'username': 'Nicko'}
-    posts = [
-        {
-            'author': {'username': 'John'},
-            'body': 'Beautiful day in Portland!'
-        },
-        {
-            'author': {'username': 'Susan'},
-            'body': 'The Avengers movie was so cool!'
-        }
-    ]
-    return render_template('index.html', user = user, posts = posts, title = 'Home')
+    form = PostForm()
+    if form.validate_on_submit():
+        post = Post(body=form.post.data, author=current_user)
+        db.session.add(post)
+        db.session.commit()
+        flash('Your post is live!')
+        return redirect(url_for('index'))
+    posts = db.session.scalars(current_user.following_posts()).all()
+    return render_template('index.html', form = form, posts = posts, title = 'Home Page')
 
 @app.route("/login", methods=['GET', 'POST'])
 def login():
@@ -75,7 +72,8 @@ def user(username):
         {'author': user, 'body': 'Test post #1'},
         {'author': user, 'body': 'Test post #2'}
     ]
-    return render_template('user.html', posts=posts, user=user)
+    form = EmptyForm()
+    return render_template('user.html', posts=posts, user=user, form=form)
 
 @app.route("/edit_profile", methods=['GET', 'POST'])
 @login_required
@@ -91,3 +89,41 @@ def edit_profile():
         form.username.data = current_user.username
         form.about_me.data = current_user.about_me
     return render_template('edit_profile.html', title='Edit Profile', form=form)
+
+@app.route("/follow/<username>", methods=['POST'])
+@login_required
+def follow(username):
+    form = EmptyForm()
+    if form.validate_on_submit():
+        user = db.session.scalar(sa.select(User).where(User.username == username))
+        if user is None:
+            flash(f'User {username} not found.')
+            return redirect(url_for('index'))
+        if user == current_user:
+            flash('You cannot follow yourself')
+            return redirect(url_for('user', username=username))
+        current_user.follow(user)
+        db.session.commit()
+        flash(f'You are following {username}!')
+        return redirect(url_for('user', username=username))
+    else:
+        return redirect(url_for('index'))
+    
+@app.route("/unfollow/<username>", methods = ['POST'])
+@login_required
+def unfollow(username):
+    form = EmptyForm()
+    if form.validate_on_submit():
+        user = db.session.scalar(sa.select(User).where(User.username == username))
+        if user is None:
+            flash(f'User {username} not found.')
+            return redirect(url_for('index'))
+        if user == current_user:
+            flash('You cannot unfollow yourself')
+            return redirect(url_for('user', username=username))
+        current_user.unfollow(user)
+        db.session.commit()
+        flash(f'You are not following {username}.')
+        return redirect(url_for('user', username=username))
+    else:
+        return redirect(url_for('index'))
